@@ -1,0 +1,886 @@
+# Local Voice AI - Guide d'installation et de configuration
+
+Ce guide présente une première installation simple de **Local Voice AI**, depuis la préparation de l'environnement jusqu'au lancement et à la personnalisation de base de l'agent vocal.
+
+Le projet réunit dans un environnement Docker les principaux composants nécessaires à un assistant vocal local :
+
+- LiveKit pour les échanges audio en temps réel ;
+- un modèle de langage exécuté localement ;
+- Nemotron ou Whisper pour la transcription de la voix en texte ;
+- Kokoro pour la synthèse vocale ;
+- un agent Python personnalisable ;
+- une interface Web pour démarrer une conversation.
+
+L'objectif de la configuration par défaut est de fonctionner sans abonnement, sans clé API et sans envoyer les conversations vers un service d'IA externe.
+
+> **Important :** les noms des variables, des dossiers et des services peuvent évoluer selon la version du dépôt. Avant toute modification, consultez également le fichier `README.md`, le fichier d'exemple d'environnement et le fichier Docker Compose présents dans votre copie du projet.
+
+---
+
+## Sommaire
+
+1. [Prérequis](#1-prérequis)
+2. [Récupérer le projet](#2-récupérer-le-projet)
+3. [Préparer la configuration](#3-préparer-la-configuration)
+4. [Choisir le moteur de transcription](#4-choisir-le-moteur-de-transcription)
+5. [Démarrer le projet](#5-démarrer-le-projet)
+6. [Suivre l'initialisation](#6-suivre-linitialisation)
+7. [Ouvrir l'interface Web](#7-ouvrir-linterface-web)
+8. [Tester l'agent vocal](#8-tester-lagent-vocal)
+9. [Personnaliser l'agent](#9-personnaliser-lagent)
+10. [Changer la voix](#10-changer-la-voix)
+11. [Appliquer une modification](#11-appliquer-une-modification)
+12. [Utiliser Windows avec WSL2](#12-utiliser-windows-avec-wsl2)
+13. [Commandes utiles](#13-commandes-utiles)
+14. [Dépannage](#14-dépannage)
+15. [Limites et extensions possibles](#15-limites-et-extensions-possibles)
+16. [Arrêter ou supprimer l'installation](#16-arrêter-ou-supprimer-linstallation)
+17. [Checklist de validation](#17-checklist-de-validation)
+
+---
+
+## 1. Prérequis
+
+### Configuration matérielle recommandée
+
+Prévoyez au minimum :
+
+- **16 Go de mémoire vive** recommandés ;
+- **20 Go d'espace disque libre** au minimum ;
+- un microphone fonctionnel ;
+- une sortie audio fonctionnelle ;
+- une connexion Internet pour le premier téléchargement des images, dépendances et modèles.
+
+Le projet peut fonctionner uniquement avec le processeur, mais la latence sera généralement plus élevée.
+
+Une carte graphique NVIDIA compatible CUDA est recommandée pour de meilleures performances avec les composants optimisés pour NVIDIA.
+
+Sur Mac Apple Silicon, Whisper est généralement le choix le plus adapté pour la transcription.
+
+### Logiciels nécessaires
+
+Installez les outils suivants :
+
+- Git ;
+- Docker Desktop ou Docker Engine avec Docker Compose ;
+- Python 3.12 ou une version supérieure si les scripts du dépôt l'exigent ;
+- un éditeur de code, par exemple Visual Studio Code.
+
+### Vérifier les installations
+
+Ouvrez un terminal et exécutez :
+
+```bash
+git --version
+docker --version
+docker compose version
+python --version
+```
+
+Selon votre système, la commande Python peut être :
+
+```bash
+python3 --version
+```
+
+Docker doit être démarré avant de lancer le projet.
+
+### Vérifier Docker
+
+Exécutez :
+
+```bash
+docker info
+```
+
+Si la commande renvoie les informations du moteur Docker, l'environnement est prêt.
+
+Si elle renvoie une erreur de connexion au daemon, démarrez Docker Desktop ou le service Docker.
+
+---
+
+## 2. Récupérer le projet
+
+### Cloner le dépôt
+
+```bash
+git clone https://github.com/ShayneP/local-voice-ai.git
+cd local-voice-ai
+```
+
+Si vous travaillez depuis votre propre fork, remplacez l'adresse par celle de votre dépôt :
+
+```bash
+git clone URL_DE_VOTRE_DEPOT.git
+cd local-voice-ai
+```
+
+### Ouvrir le projet dans Visual Studio Code
+
+```bash
+code .
+```
+
+Vous pouvez également ouvrir manuellement le dossier depuis votre éditeur.
+
+### Vérifier que vous êtes à la racine
+
+La commande suivante doit afficher les fichiers du projet, notamment le fichier Docker Compose :
+
+```bash
+ls
+```
+
+Sous PowerShell :
+
+```powershell
+Get-ChildItem
+```
+
+Toutes les commandes Docker Compose de ce guide doivent être exécutées depuis le dossier qui contient le fichier `compose.yaml`, `compose.yml`, `docker-compose.yaml` ou `docker-compose.yml`.
+
+---
+
+## 3. Préparer la configuration
+
+Recherchez à la racine du dépôt un fichier d'exemple tel que :
+
+```text
+.env.example
+```
+
+S'il existe, créez le fichier `.env` à partir de cet exemple.
+
+Sous Linux, macOS ou WSL2 :
+
+```bash
+cp .env.example .env
+```
+
+Sous PowerShell :
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Si le dépôt contient déjà un fichier `.env` prévu pour une utilisation locale, vérifiez son contenu avant de poursuivre.
+
+> **Sécurité :** ne publiez pas un fichier `.env` contenant des clés, mots de passe ou jetons. Vérifiez que `.env` figure dans le fichier `.gitignore` avant tout `git push`.
+
+### Variables principales
+
+Les noms exacts doivent être vérifiés dans le fichier d'exemple livré avec le dépôt. Les paramètres à repérer concernent principalement :
+
+- le fournisseur de transcription, ou STT ;
+- le modèle de langage local ;
+- le fournisseur de synthèse vocale, ou TTS ;
+- la voix utilisée ;
+- les ports de l'interface et de LiveKit.
+
+Exemple indicatif :
+
+```env
+STT_PROVIDER=nemotron
+TTS_PROVIDER=kokoro
+TTS_VOICE=af_sarah
+```
+
+N'ajoutez pas ces variables si elles n'existent pas dans la version du dépôt que vous utilisez. Modifiez les variables déjà documentées dans `.env.example` ou dans `README.md`.
+
+---
+
+## 4. Choisir le moteur de transcription
+
+Le moteur Speech-to-Text transforme la voix captée par le microphone en texte exploitable par le modèle de langage.
+
+### Windows ou Linux avec GPU NVIDIA
+
+Utilisez Nemotron lorsque cette option est proposée par le dépôt :
+
+```env
+STT_PROVIDER=nemotron
+```
+
+Cette configuration est adaptée à une machine équipée d'une carte NVIDIA et des composants CUDA nécessaires.
+
+### Mac Apple Silicon
+
+Utilisez Whisper lorsque cette option est proposée :
+
+```env
+STT_PROVIDER=whisper
+```
+
+Whisper évite de dépendre d'une optimisation spécifique à CUDA et convient mieux aux Mac Apple Silicon.
+
+### Machine sans GPU NVIDIA
+
+Commencez avec Whisper si la version du dépôt le permet :
+
+```env
+STT_PROVIDER=whisper
+```
+
+Le traitement s'effectuera sur le processeur ou avec les accélérations compatibles avec votre plateforme. Les réponses pourront être plus lentes.
+
+---
+
+## 5. Démarrer le projet
+
+Depuis la racine du dépôt, exécutez :
+
+```bash
+docker compose up -d --build
+```
+
+Cette commande :
+
+1. construit les images nécessaires ;
+2. crée les conteneurs ;
+3. démarre les services en arrière-plan ;
+4. télécharge les dépendances et modèles requis lors du premier lancement.
+
+Le premier démarrage peut prendre plusieurs dizaines de minutes selon :
+
+- la vitesse de la connexion Internet ;
+- les performances du processeur ;
+- la présence d'un GPU compatible ;
+- la taille des modèles téléchargés ;
+- les ressources accordées à Docker.
+
+Ne relancez pas immédiatement la commande si le terminal a rendu la main. Avec l'option `-d`, les services continuent de démarrer en arrière-plan.
+
+---
+
+## 6. Suivre l'initialisation
+
+### Afficher l'état des conteneurs
+
+```bash
+docker compose ps
+```
+
+### Suivre les journaux en temps réel
+
+```bash
+docker compose logs -f
+```
+
+Pour quitter l'affichage des journaux sans arrêter les services, utilisez :
+
+```text
+Ctrl+C
+```
+
+### Rechercher les erreurs récentes
+
+```bash
+docker compose logs --tail=200
+```
+
+Lors du premier lancement, il est normal de voir des étapes de téléchargement, de chargement ou d'initialisation des modèles.
+
+Attendez que les composants nécessaires soient prêts avant de tester l'agent :
+
+- serveur LiveKit ;
+- agent worker ;
+- modèle de langage ;
+- moteur Speech-to-Text ;
+- moteur Text-to-Speech ;
+- interface Web.
+
+---
+
+## 7. Ouvrir l'interface Web
+
+Affichez les ports publiés :
+
+```bash
+docker compose ps
+```
+
+Repérez la colonne `PORTS`, puis ouvrez dans votre navigateur l'adresse correspondant à l'interface Web.
+
+Selon la configuration du dépôt, l'adresse peut par exemple être :
+
+```text
+http://localhost
+```
+
+ou :
+
+```text
+http://localhost:PORT
+```
+
+Vous pouvez également ouvrir Docker Desktop, sélectionner le projet, puis utiliser le lien associé au port de l'interface.
+
+> Utilisez le port réellement affiché par `docker compose ps`. Ne supposez pas qu'il s'agit systématiquement du port 80.
+
+---
+
+## 8. Tester l'agent vocal
+
+Dans l'interface Web :
+
+1. autorisez l'accès au microphone lorsque le navigateur le demande ;
+2. vérifiez que les composants sont indiqués comme disponibles ;
+3. démarrez une nouvelle conversation ;
+4. prononcez une phrase courte ;
+5. attendez la transcription puis la réponse vocale.
+
+Exemple de test :
+
+```text
+Bonjour, peux-tu te présenter en une phrase ?
+```
+
+Pour un premier diagnostic, utilisez une phrase simple et évitez un environnement sonore bruyant.
+
+Si le microphone n'est pas détecté :
+
+- vérifiez l'autorisation du site dans le navigateur ;
+- vérifiez le périphérique d'entrée sélectionné par le système ;
+- rechargez la page après avoir accordé l'autorisation ;
+- testez le microphone dans une autre application.
+
+---
+
+## 9. Personnaliser l'agent
+
+La logique de l'agent se trouve généralement dans un fichier nommé `agent.py`, éventuellement placé dans un sous-dossier du projet.
+
+Pour le localiser sous Linux, macOS ou WSL2 :
+
+```bash
+find . -name "agent.py"
+```
+
+Sous PowerShell :
+
+```powershell
+Get-ChildItem -Recurse -Filter agent.py
+```
+
+Ouvrez le fichier correspondant à l'agent exécuté par Docker et recherchez les instructions initiales ou le prompt système.
+
+Exemple de personnalité :
+
+```text
+Tu es Alfred, un assistant vocal local, clair et concis.
+Tu réponds en français sauf si l'utilisateur emploie une autre langue.
+Si l'utilisateur demande « Alfred, tu es là ? », réponds « À votre service. »
+Tu privilégies des réponses courtes et faciles à comprendre à l'oral.
+```
+
+### Bonnes pratiques pour un agent vocal
+
+- Utiliser des phrases courtes.
+- Éviter les longues listes difficiles à suivre oralement.
+- Demander une précision uniquement lorsque l'information manque réellement.
+- Ne pas lire de syntaxe technique complexe sans nécessité.
+- Indiquer clairement lorsqu'une action n'a pas pu être exécutée.
+- Ne pas prétendre disposer d'un outil qui n'a pas été configuré.
+
+### Ajouter des outils
+
+L'agent peut être étendu avec des fonctions ou outils personnalisés, selon les mécanismes prévus par LiveKit Agents et par le dépôt.
+
+Exemples d'actions futures :
+
+- terminer proprement une conversation ;
+- appeler un workflow n8n ;
+- interroger une base documentaire locale ;
+- communiquer avec Home Assistant ;
+- utiliser un serveur MCP ;
+- exécuter une action dans une application métier.
+
+Pour cette première version, validez d'abord le fonctionnement standard avant d'ajouter un outil externe.
+
+---
+
+## 10. Changer la voix
+
+Recherchez dans `.env` la variable utilisée pour la voix Kokoro.
+
+Exemple indicatif :
+
+```env
+TTS_VOICE=af_sarah
+```
+
+Remplacez sa valeur par l'identifiant exact d'une voix prise en charge par la version de Kokoro intégrée au projet.
+
+Exemple indicatif :
+
+```env
+TTS_VOICE=am_michael
+```
+
+La disponibilité d'une voix dépend de la version du modèle et de la configuration du dépôt. Si une voix inconnue est indiquée, le service TTS peut ne pas démarrer.
+
+Après la modification, redémarrez ou reconstruisez les services comme expliqué dans la section suivante.
+
+---
+
+## 11. Appliquer une modification
+
+Toutes les modifications ne nécessitent pas forcément une reconstruction complète.
+
+### Redémarrer les services
+
+Pour une modification de configuration déjà montée dans les conteneurs :
+
+```bash
+docker compose restart
+```
+
+### Recréer les conteneurs
+
+Après une modification du fichier `.env` :
+
+```bash
+docker compose up -d --force-recreate
+```
+
+### Reconstruire après une modification du code ou de l'image
+
+```bash
+docker compose up -d --build
+```
+
+### Reconstruire sans cache en cas de doute
+
+```bash
+docker compose build --no-cache
+docker compose up -d
+```
+
+Utilisez la reconstruction sans cache uniquement si une reconstruction classique ne prend pas correctement en compte la modification.
+
+---
+
+## 12. Utiliser Windows avec WSL2
+
+Le projet peut être exécuté avec WSL2 et Docker Desktop.
+
+Architecture recommandée :
+
+```text
+Windows 11
+└── Docker Desktop avec moteur WSL2
+    └── Distribution Linux WSL2
+        └── Dépôt Local Voice AI
+```
+
+### Étapes générales
+
+1. Installer WSL2 et une distribution Linux, par exemple Ubuntu.
+2. Installer Docker Desktop sous Windows.
+3. Activer l'intégration WSL dans Docker Desktop.
+4. Cloner le dépôt dans le système de fichiers Linux.
+5. Ouvrir le dossier avec Visual Studio Code depuis WSL.
+6. Exécuter Docker Compose dans le terminal WSL.
+
+Exemple :
+
+```bash
+cd ~
+git clone https://github.com/ShayneP/local-voice-ai.git
+cd local-voice-ai
+code .
+docker compose up -d --build
+```
+
+### Recommandation de performance
+
+Placez de préférence le dépôt dans le système de fichiers Linux :
+
+```text
+/home/votre-utilisateur/local-voice-ai
+```
+
+Évitez si possible de l'exécuter depuis un dossier Windows monté comme :
+
+```text
+/mnt/c/Users/...
+```
+
+Cela limite les ralentissements liés aux accès croisés entre les systèmes de fichiers Windows et Linux.
+
+---
+
+## 13. Commandes utiles
+
+### Afficher les services
+
+```bash
+docker compose ps
+```
+
+### Suivre tous les journaux
+
+```bash
+docker compose logs -f
+```
+
+### Suivre un service précis
+
+Remplacez `NOM_DU_SERVICE` par le nom affiché dans le fichier Docker Compose :
+
+```bash
+docker compose logs -f NOM_DU_SERVICE
+```
+
+### Afficher l'utilisation des ressources
+
+```bash
+docker stats
+```
+
+### Redémarrer le projet
+
+```bash
+docker compose restart
+```
+
+### Arrêter le projet
+
+```bash
+docker compose stop
+```
+
+### Arrêter et supprimer les conteneurs
+
+```bash
+docker compose down
+```
+
+### Mettre à jour le dépôt
+
+Avant la mise à jour, sauvegardez vos modifications locales.
+
+```bash
+git status
+git pull
+```
+
+Puis reconstruisez si nécessaire :
+
+```bash
+docker compose up -d --build
+```
+
+---
+
+## 14. Dépannage
+
+### Docker n'est pas accessible
+
+Symptômes possibles :
+
+```text
+Cannot connect to the Docker daemon
+```
+
+ou :
+
+```text
+error during connect
+```
+
+Actions :
+
+1. démarrer Docker Desktop ;
+2. attendre que le moteur Docker soit prêt ;
+3. exécuter `docker info` ;
+4. sous WSL2, vérifier que l'intégration de la distribution est activée.
+
+### Un conteneur redémarre en boucle
+
+Affichez son état :
+
+```bash
+docker compose ps
+```
+
+Puis ses journaux :
+
+```bash
+docker compose logs --tail=200 NOM_DU_SERVICE
+```
+
+Recherchez notamment :
+
+- une variable d'environnement absente ;
+- un modèle introuvable ;
+- un port déjà utilisé ;
+- une mémoire insuffisante ;
+- une incompatibilité GPU ou CUDA.
+
+### Le premier lancement semble bloqué
+
+Suivez les journaux :
+
+```bash
+docker compose logs -f
+```
+
+Un téléchargement ou un chargement de modèle peut rester silencieux pendant plusieurs minutes.
+
+Vérifiez également :
+
+```bash
+docker stats
+```
+
+Une activité processeur, mémoire, réseau ou disque indique généralement que l'initialisation continue.
+
+### L'interface Web ne s'ouvre pas
+
+1. Vérifiez les ports publiés :
+
+```bash
+docker compose ps
+```
+
+2. Vérifiez que le conteneur de l'interface est actif.
+3. Testez l'adresse avec le port exact affiché.
+4. Vérifiez qu'une autre application n'utilise pas déjà ce port.
+5. Consultez les journaux du service Web.
+
+### Le navigateur refuse le microphone
+
+- Accordez l'autorisation au site local.
+- Vérifiez les paramètres de confidentialité du système.
+- Sélectionnez le bon périphérique d'entrée.
+- Rechargez l'interface.
+- Testez avec `localhost` plutôt qu'une adresse réseau non sécurisée si le navigateur applique des restrictions.
+
+### La transcription ne fonctionne pas
+
+- Vérifiez que le service STT est prêt.
+- Vérifiez la valeur du fournisseur STT dans `.env`.
+- Sur une machine sans NVIDIA, testez Whisper si disponible.
+- Consultez les journaux du service de transcription.
+- Vérifiez que Docker dispose de suffisamment de mémoire.
+
+### La réponse est très lente
+
+Causes possibles :
+
+- exécution sur processeur uniquement ;
+- modèle de langage trop volumineux ;
+- mémoire vive insuffisante ;
+- ressources Docker trop limitées ;
+- moteur STT inadapté au matériel ;
+- autres applications consommant le GPU ou le processeur.
+
+Actions possibles :
+
+1. fermer les applications lourdes ;
+2. augmenter les ressources attribuées à Docker ;
+3. utiliser un modèle plus léger si le dépôt le permet ;
+4. sélectionner Whisper sur une plateforme sans CUDA ;
+5. utiliser Nemotron avec un environnement NVIDIA correctement configuré.
+
+### La synthèse vocale ne démarre pas
+
+- Vérifiez le nom de la voix dans `.env`.
+- Revenez à la voix configurée par défaut dans le dépôt.
+- Consultez les journaux du service TTS.
+- Vérifiez que les modèles Kokoro ont été téléchargés correctement.
+
+### Un port est déjà utilisé
+
+Identifiez le port dans le fichier Docker Compose, puis modifiez uniquement le port publié sur l'hôte.
+
+Exemple générique :
+
+```yaml
+ports:
+  - "8080:80"
+```
+
+Dans cet exemple, l'interface serait accessible à l'adresse :
+
+```text
+http://localhost:8080
+```
+
+Ne modifiez pas le port interne sans vérifier les dépendances entre les services.
+
+### Réinitialiser les conteneurs
+
+```bash
+docker compose down
+docker compose up -d --build
+```
+
+Si le problème persiste, consultez les journaux avant de supprimer les volumes afin de ne pas effacer inutilement les modèles ou données téléchargés.
+
+---
+
+## 15. Limites et extensions possibles
+
+### Utiliser un abonnement ChatGPT
+
+Un abonnement ChatGPT grand public ne constitue pas automatiquement une clé API utilisable par le projet.
+
+La connexion à un modèle OpenAI ou à un autre fournisseur cloud nécessite généralement :
+
+- une intégration prise en charge dans le code ;
+- une clé API distincte ;
+- une facturation API éventuelle ;
+- l'acceptation de ne plus avoir une architecture entièrement locale.
+
+Ne placez jamais une clé API directement dans un fichier suivi par Git.
+
+### Utiliser ElevenLabs
+
+ElevenLabs peut être intégré uniquement si le code de l'agent et le pipeline TTS sont adaptés.
+
+Cette modification change les propriétés du projet :
+
+- la synthèse vocale n'est plus entièrement locale ;
+- une connexion Internet devient nécessaire ;
+- une clé API est requise ;
+- l'utilisation peut être facturée ;
+- les données envoyées doivent être évaluées selon les exigences de confidentialité du projet.
+
+### Cloner une voix
+
+Kokoro fournit des voix prédéfinies mais la configuration standard du projet n'est pas destinée au clonage de votre propre voix.
+
+Pour ce besoin, il faut intégrer un moteur TTS compatible avec le clonage vocal, par exemple :
+
+- XTTS-v2 ;
+- F5-TTS ;
+- OpenVoice ;
+- CosyVoice.
+
+Cette évolution demande une adaptation du code, des modèles supplémentaires et une validation des droits d'utilisation de la voix concernée.
+
+> Utilisez uniquement une voix pour laquelle vous disposez d'une autorisation explicite. Informez clairement les utilisateurs lorsqu'une voix synthétique est employée.
+
+### Ajouter MCP, RAG ou n8n
+
+L'agent peut servir de base à des intégrations plus avancées :
+
+```text
+Utilisateur
+    ↓
+Interface vocale LiveKit
+    ↓
+Agent local
+    ↓
+Outil personnalisé ou serveur MCP
+    ↓
+Workflow n8n, base documentaire ou application métier
+```
+
+Ordre recommandé :
+
+1. valider le pipeline vocal local ;
+2. personnaliser le prompt de l'agent ;
+3. ajouter un seul outil simple ;
+4. tester les erreurs et délais d'exécution ;
+5. connecter ensuite MCP, RAG ou n8n ;
+6. ajouter des contrôles d'accès avant toute action sensible.
+
+---
+
+## 16. Arrêter ou supprimer l'installation
+
+### Arrêter les services sans les supprimer
+
+```bash
+docker compose stop
+```
+
+### Redémarrer les services arrêtés
+
+```bash
+docker compose start
+```
+
+### Supprimer les conteneurs et le réseau du projet
+
+```bash
+docker compose down
+```
+
+### Supprimer également les volumes
+
+```bash
+docker compose down -v
+```
+
+> **Attention :** l'option `-v` peut supprimer des modèles, caches ou données persistantes. Utilisez-la uniquement si vous souhaitez réellement réinitialiser l'installation.
+
+### Supprimer également les images construites localement
+
+```bash
+docker compose down --rmi local
+```
+
+---
+
+## 17. Checklist de validation
+
+Avant de modifier l'agent, vérifiez les points suivants :
+
+- [ ] Git est installé.
+- [ ] Docker est installé et démarré.
+- [ ] `docker compose version` fonctionne.
+- [ ] Le dépôt est cloné localement.
+- [ ] Le terminal est ouvert à la racine du projet.
+- [ ] Le fichier `.env` a été vérifié.
+- [ ] Le fournisseur STT correspond au matériel utilisé.
+- [ ] `docker compose up -d --build` s'exécute sans erreur bloquante.
+- [ ] Tous les services nécessaires sont actifs.
+- [ ] Le port de l'interface a été identifié avec `docker compose ps`.
+- [ ] Le navigateur est autorisé à utiliser le microphone.
+- [ ] Une première conversation vocale fonctionne.
+- [ ] Les journaux ne montrent pas d'erreur répétée.
+- [ ] La configuration d'origine a été sauvegardée avant personnalisation.
+
+---
+
+## Parcours recommandé pour la suite
+
+Après validation de cette première installation :
+
+1. modifier le nom et la personnalité de l'agent ;
+2. sélectionner une voix Kokoro adaptée ;
+3. tester les performances et la stabilité ;
+4. ajouter un premier outil local simple ;
+5. connecter une base documentaire avec un pipeline RAG ;
+6. intégrer un serveur MCP ou un workflow n8n ;
+7. évaluer un autre moteur TTS uniquement si le besoin le justifie.
+
+---
+
+## Ressources
+
+- Dépôt principal : <https://github.com/ShayneP/local-voice-ai>
+- Docker Desktop : <https://www.docker.com/products/docker-desktop/>
+- Python : <https://www.python.org/downloads/>
+- Visual Studio Code : <https://code.visualstudio.com/>
+- WSL : <https://learn.microsoft.com/windows/wsl/>
+
+---
+
+## Note sur la confidentialité
+
+Une exécution locale réduit la dépendance aux services cloud, mais elle ne garantit pas à elle seule la sécurité complète du système.
+
+Avant un usage professionnel :
+
+- vérifiez les ports exposés ;
+- évitez d'exposer l'interface directement sur Internet ;
+- protégez les secrets de configuration ;
+- contrôlez les journaux générés ;
+- limitez les permissions des outils ajoutés ;
+- validez les licences des modèles et composants ;
+- documentez les données traitées et leur durée de conservation.
